@@ -38,6 +38,7 @@ end
 
 ---从文件加载数据到 DB
 function tips.init_db_from_file(path)
+    if type(path) ~= "string" or path == "" then return end
     local file = io.open(path, "r")
     if not file then return end
 

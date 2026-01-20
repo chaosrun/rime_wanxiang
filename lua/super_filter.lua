@@ -300,8 +300,12 @@ local function init_charset_filter(env, cfg)
         charsetFile = wanxiang.get_filename_with_fallback("lua/data/charset.reverse.bin") or "lua/data/charset.reverse.bin"
     end
    
+    if charsetFile then
+        charsetFile = charsetFile:gsub('^"(.*)"$', "%1")
+    end
+
     env.charset_db = nil
-    if ReverseDb then
+    if ReverseDb and charsetFile and wanxiang.file_exists(charsetFile) then
         local ok, db = pcall(function() return ReverseDb(charsetFile) end)
         if ok and db then env.charset_db = db end
     end

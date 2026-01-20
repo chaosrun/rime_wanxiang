@@ -82,22 +82,22 @@ end
 
 function AP.fini(env)
     if env._commit_conn then
-        env._commit_conn:disconnect()
+        if env._commit_conn.disconnect then env._commit_conn:disconnect() end
         env._commit_conn = nil
     end
 
     if env._delete_conn then
-        env._delete_conn:disconnect()
+        if env._delete_conn.disconnect then env._delete_conn:disconnect() end
         env._delete_conn = nil
     end
 
     if env.memory then
-        env.memory:disconnect()
+        if env.memory.disconnect then env.memory:disconnect() end
         env.memory = nil
     end
 
     if env.en_memory then
-        env.en_memory:disconnect()
+        if env.en_memory.disconnect then env.en_memory:disconnect() end
         env.en_memory = nil
     end
 end

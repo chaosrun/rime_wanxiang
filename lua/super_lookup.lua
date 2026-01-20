@@ -46,30 +46,34 @@ local function parse_and_separate_rules(schema_id)
     local algebra_list = config:get_list('speller/algebra')
     if not algebra_list or algebra_list.size == 0 then return nil, nil end
     
-    local main_rules, xlit_rules = {}, {}
+    local main_rules = ConfigList()
+    local xlit_rules = ConfigList()
     for i = 0, algebra_list.size - 1 do
-        local rule = algebra_list:get_value_at(i).value
+        local item = algebra_list:get_at(i)
+        local value = item and item:get_value()
+        local rule = value and value:get_string()
         if rule and #rule > 0 then
             if rule:match("^xlit/HSPZN/") then
-                table.insert(xlit_rules, rule)
+                xlit_rules:append(item)
             else
-                table.insert(main_rules, rule)
+                main_rules:append(item)
             end
         end
     end
-    if #main_rules == 0 and #xlit_rules == 0 then return nil, nil end
+    if main_rules:empty() and xlit_rules:empty() then return nil, nil end
     return main_rules, xlit_rules
 end
 
 local function get_schema_rules(env)
     local config = env.engine.schema.config
     local db_list = config:get_list("wanxiang_lookup/lookup")
-    if not db_list or db_list.size == 0 then return {}, {} end
-    local schema_id = db_list:get_value_at(0).value
-    if not schema_id or #schema_id == 0 then return {}, {} end
+    if not db_list or db_list.size == 0 then return nil, nil end
+    local schema_item = db_list:get_value_at(0)
+    local schema_id = schema_item and schema_item:get_string()
+    if not schema_id or #schema_id == 0 then return nil, nil end
     local main_rules, xlit_rules = parse_and_separate_rules(schema_id)
-    if not main_rules and not xlit_rules then return {}, {} end
-    return main_rules or {}, xlit_rules or {}
+    if not main_rules and not xlit_rules then return nil, nil end
+    return main_rules, xlit_rules
 end
 
 local function expand_code_variant(main_projection, xlit_projection, part)
@@ -287,12 +291,16 @@ function f.init(env)
         if db_list and db_list.size > 0 then
             env.db_table = {}
             for i = 0, db_list.size - 1 do
-                table.insert(env.db_table, ReverseLookup(db_list:get_value_at(i).value))
+                local db_item = db_list:get_value_at(i)
+                local db_name = db_item and db_item:get_string()
+                if db_name and #db_name > 0 then
+                    table.insert(env.db_table, ReverseLookup(db_name))
+                end
             end
             local main_rules, xlit_rules = get_schema_rules(env)
-            env.main_projection = (type(main_rules) == 'table' and #main_rules > 0) and Projection() or nil
+            env.main_projection = (main_rules and main_rules.size > 0) and Projection() or nil
             if env.main_projection then env.main_projection:load(main_rules) end
-            env.xlit_projection = (type(xlit_rules) == 'table' and #xlit_rules > 0) and Projection() or nil
+            env.xlit_projection = (xlit_rules and xlit_rules.size > 0) and Projection() or nil
             if env.xlit_projection then env.xlit_projection:load(xlit_rules) end
         else
             env.has_db = false
@@ -340,7 +348,18 @@ function f.init(env)
 end
 
 function f.func(input, env)
+    if not env or not env.engine or not env.engine.context then
+        for cand in input:iter() do yield(cand) end
+        return
+    end
     local context = env.engine.context
+    if not context.composition then
+        for cand in input:iter() do yield(cand) end
+        return
+    end
+    if not env.search_key_alt then
+        env.search_key_alt = alt_lua_punc(env.search_key_str or "`")
+    end
     local seg = context.composition:back()
 
     if not seg or not f.tags_match(seg, env) then
@@ -353,6 +372,7 @@ function f.func(input, env)
     end
 
     local ctx_input = env.engine.context.input
+    if not ctx_input then for cand in input:iter() do yield(cand) end return end
     local s_start, s_end = ctx_input:find(env.search_key_alt, 1, false)
     if not s_start then for cand in input:iter() do yield(cand) end return end
     local fuma = ctx_input:sub(s_end + 1)
@@ -534,6 +554,8 @@ function f.func(input, env)
 end
 
 function f.tags_match(seg, env)
+    if not seg or not seg.tags then return false end
+    if not env or not env.tag then return false end
     for _, v in ipairs(env.tag) do if seg.tags[v] then return true end end
     return false
 end
